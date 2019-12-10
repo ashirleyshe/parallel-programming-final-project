@@ -54,6 +54,7 @@ int main(){
 	//dim3 blocksPerGrid(512, 1, 1)
 	//dim3 threadsPerBlock(512, 1, 1)
 	//bilateralfilter << <blocksPerGrid, threadsPerBlock >> > ()
+	printf("%d %d\n", src.rows, src.cols); // 810*540
 	bilateralfilter(src,dst5,13,13);
 	end = clock();
 	cout<<"bilateralfilter total time="<<(end-start)/1000.0<<"seconds"<<endl;
