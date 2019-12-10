@@ -8,7 +8,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <time.h>
-#include <omp.h>
+
 using namespace std;
 using namespace cv;
 
