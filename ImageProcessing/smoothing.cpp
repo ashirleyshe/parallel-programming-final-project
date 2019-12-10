@@ -51,10 +51,10 @@ int main(){
 	
 
 	start = clock();
-	dim3 blocksPerGrid(512, 1, 1)
-	dim3 threadsPerBlock(512, 1, 1)
-	bilateralfilter << <blocksPerGrid, threadsPerBlock >> > ()
-	//bilateralfilter(src,dst5,13,13);
+	//dim3 blocksPerGrid(512, 1, 1)
+	//dim3 threadsPerBlock(512, 1, 1)
+	//bilateralfilter << <blocksPerGrid, threadsPerBlock >> > ()
+	bilateralfilter(src,dst5,13,13);
 	end = clock();
 	cout<<"bilateralfilter total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
@@ -355,12 +355,12 @@ void bilateralfilter(Mat src,Mat dst,double sigmaS,double sigmaG){ //雙側濾�
 	int rows = src.rows;
 	int cols = src.cols;
 	
-	//for(int i = 0;i < rows;i++) 
-	//{
-	//	for(int j = 0;j < cols; j++)
-	//	{
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	int j = blockIdx.y * blockDim.y + threadIdx.y;
+	for(int i = 0;i < rows;i++) 
+	{
+		for(int j = 0;j < cols; j++)
+		{
+	//int i = blockIdx.x * blockDim.x + threadIdx.x;
+	//int j = blockIdx.y * blockDim.y + threadIdx.y;
 			double k = 0;
 			double f = 0;
 			for ( int y = i-m; y <= i+m; y++)
@@ -382,6 +382,6 @@ void bilateralfilter(Mat src,Mat dst,double sigmaS,double sigmaG){ //雙側濾�
 			if (g<0) g = 0;
 			else if(g>255) g = 255;
 			dst.at<uchar>(i, j) = (uchar)g;
-	//	}
-	//}
+		}
+	}
 }
