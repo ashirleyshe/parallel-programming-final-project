@@ -2,6 +2,7 @@
 * Visual Studio 2017
 * openCV 3.1
 * CUDA 10.1
+* GPU NVIDIA GeForce GTX 1070 
 
 ### Visual Studio 2017 屬性
 * include目錄
