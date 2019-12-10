@@ -1,6 +1,3 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-
 #include <cstdio>
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -8,7 +5,10 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <time.h>
-
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+#include <stdio.h>
+#include <stdlib.h>
 using namespace std;
 using namespace cv;
 
@@ -19,10 +19,15 @@ void quickSort(int *a, int left, int right);
 void peak_and_valley_flitering(Mat src, Mat dst);
 void max_flitering(Mat src, Mat dst);
 void min_flitering(Mat src, Mat dst);
-void colorchange(Mat src, Mat dst);
+//void colorchange(Mat src, Mat dst);
 double spacedistance(int x1, int y1, int x2, int y2, double sigmaS);
 double GSdistance(int g1, int g2, double sigmaG);
 void bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG);
+
+/*CUDA version*/
+double __device__ CUDA_spacedistance(int x1, int y1, int x2, int y2, double sigmaS);
+double __device__ CUDA_GSdistance(int g1, int g2, double sigmaG);
+void __global__ CUDA_bilateralfilter(uchar *d_src, uchar *d_dst, int rows, int cols, double sigmaS, double sigmaG);
 
 int main() {
 	Mat src = imread("freckle.jpg", CV_LOAD_IMAGE_GRAYSCALE);
@@ -31,37 +36,54 @@ int main() {
 	Mat dst3(src.rows, src.cols, CV_8U);
 	Mat dst4(src.rows, src.cols, CV_8U);
 	Mat dst5(src.rows, src.cols, CV_8U);
+	Mat dst6(src.rows, src.cols, CV_8U);
 
 	unsigned long start = clock();
-	neighborhood_averaging(src, dst);
+	neighborhood_averaging(src,dst);
 	unsigned long end = clock();
-	cout << "neigbor total time=" << (end - start) / 1000.0 << "seconds" << endl;
+	cout<<"neigbor total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
 	start = clock();
 	gaussian(src, dst2);
 	end = clock();
-	cout << "guassian total time=" << (end - start) / 1000.0 << "seconds" << endl;
+	cout<<"guassian total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
 	start = clock();
-	median_flitering(src, dst3);
+	median_flitering(src,dst3);
 	end = clock();
-	cout << "median total time=" << (end - start) / 1000.0 << "seconds" << endl;
+	cout<<"median total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
 	start = clock();
 	peak_and_valley_flitering(src, dst4);
 	end = clock();
-	cout << "peak_and_valley total time=" << (end - start) / 1000.0 << "seconds" << endl;
+	cout<<"peak_and_valley total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
 
 	start = clock();
-	//dim3 blocksPerGrid(512, 1, 1)
-	//dim3 threadsPerBlock(512, 1, 1)
-	//bilateralfilter << <blocksPerGrid, threadsPerBlock >> > ()
-	bilateralfilter(src, dst5, 13, 13);
+	bilateralfilter(src,dst5,13,13);
 	end = clock();
-	cout << "bilateralfilter total time=" << (end - start) / 1000.0 << "seconds" << endl;
+	cout<<"bilateralfilter total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
-	//³Ì¤j³Ì¤pÂoªi¦b³Ì¤p³Ì¤jÂoªi
+	start = clock();
+	uchar *d_src;
+	uchar *d_dst;
+	int size = src.rows * src.cols * sizeof(uchar);
+	cudaMalloc(&d_src, size);
+	cudaMalloc(&d_dst, size);
+	cudaMemcpy(d_src, src.data, size, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_dst, dst6.data, size, cudaMemcpyHostToDevice);
+
+	dim3 block(8, 8);
+	dim3 grid((src.rows + block.x - 1) / block.x, (src.cols + block.y - 1) / block.y);
+	CUDA_bilateralfilter <<< grid, block >>> (d_src, d_dst, src.rows, src.cols, 13, 13);
+
+	cudaMemcpy(dst6.data, d_dst, size, cudaMemcpyDeviceToHost);
+	cudaFree(d_src);
+	cudaFree(d_dst);
+	end = clock();
+	cout << "CUDA bilateralfilter total time=" << (end - start) / 1000.0 << "seconds" << endl;
+
+	//æœ€å¤§æœ€å°æ¿¾æ³¢åœ¨æœ€å°æœ€å¤§æ¿¾æ³¢
 	/*max_flitering(src,dst);
 	min_flitering(dst,dst2);
 	min_flitering(dst2,dst3);
@@ -69,114 +91,115 @@ int main() {
 
 
 	imshow("orgin", src);
-	imshow("neigbor", dst);
-	imshow("guassian", dst2);
-	imshow("median", dst3);
-	imshow("peak_and_valley", dst4);
+	imshow("neigbor",dst);
+	imshow("guassian",dst2);
+	imshow("median",dst3);
+	imshow("peak_and_valley",dst4);
 	imshow("bilateralfilter", dst5);
+	imshow("CUDA_bilateralfilter", dst6);
 
 	imwrite("neigbor.jpg", dst);
 	imwrite("guassian.jpg", dst2);
 	imwrite("median.jpg", dst3);
 	imwrite("peak_and_valley.jpg", dst4);
 	imwrite("bilateralfilter.jpg", dst5);
-
+	imwrite("CUDA_bilateralfilter.jpg", dst6);
 
 	waitKey(0);
 	return(0);
 }
 
-//¬Û¾F¹³¯À¥­§¡ªk
-void neighborhood_averaging(Mat src, Mat dst) {
-	int mask[25] = { 1,1,1,1,1,
+//ç›¸é„°åƒç´ å¹³å‡æ³•
+void neighborhood_averaging(Mat src, Mat dst){
+	int mask[25] = {1,1,1,1,1,
 					1,1,1,1,1,
 					1,1,1,1,1,
 					1,1,1,1,1,
-					1,1,1,1,1 };
+					1,1,1,1,1};
 	int divisor = 0;
 	int m = 2;
 	int rows = src.rows;
 	int cols = src.cols;
 
-	for (int i = 0; i < rows; i++)
+	for(int i = 0;i< rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for(int j = 0;j< cols; j++)
 		{
 			int sum = 0;
 			int index = 0;
-			for (int y = i - m; y <= i + m; y++)
+			for ( int y= i-m; y<= i+m; y++)
 			{
-				for (int x = j - m; x <= j + m; x++)
+				for (int x= j-m; x<= j+m; x++)
 				{
 					if (y < 0 || x < 0 || y >= rows || x >= cols)
 					{
 						continue;
 					}
 					divisor = divisor + mask[index];
-					sum = sum + src.at<uchar>(y, x) * mask[index++];
+					sum = sum + src.at<uchar>(y, x) * mask[index++] ;
 				}
 			}
-			sum = sum / divisor;
-			if (sum > 255) { sum = 255; }
+			sum = sum/divisor;
+			if(sum>255){sum=255;}
 			dst.at<uchar>(i, j) = sum;
 			divisor = 0;
 		}
 	}
 }
 
-//°ª´µ¥­·Æ¤Æ
-void gaussian(Mat src, Mat dst) {
-	int mask[25] = { 1,2,4,2,1,
+//é«˜æ–¯å¹³æ»‘åŒ–
+void gaussian(Mat src,Mat dst){
+	int mask[25] = {1,2,4,2,1,
 					2,4,10,4,2,
 					4,10,16,10,4,
 					2,4,10,4,2,
-					1,2,4,2,1, };
+					1,2,4,2,1,};
 	int m = 2; //5x5
 	int rows = src.rows;
 	int cols = src.cols;
-	int divisor = 0;
-	for (int i = 0; i < rows; i++)
+	int divisor=0;
+	for(int i = 0;i< rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for(int j = 0;j< cols; j++)
 		{
 			int sum = 0;
 			int index = 0;
 
-			for (int y = i - m; y <= i + m; y++)
+			for ( int y= i-m; y<= i+m; y++)
 			{
-				for (int x = j - m; x <= j + m; x++)
+				for (int x= j-m; x<= j+m; x++)
 				{
 					if (y < 0 || x < 0 || y >= rows || x >= cols)
 					{
 						continue;
 					}
 					divisor = divisor + mask[index];
-					sum = sum + src.at<uchar>(y, x) * mask[index++];
+					sum = sum + src.at<uchar>(y, x) * mask[index++] ;
 				}
 			}
-			sum = sum / divisor;
-			if (sum > 255) { sum = 255; }
+			sum = sum/divisor;
+			if(sum>255){sum=255;}
 			dst.at<uchar>(i, j) = sum;
 			divisor = 0;
 		}
 	}
 }
 
-//¤¤­ÈÂoªi
-void median_flitering(Mat src, Mat dst) {
+//ä¸­å€¼æ¿¾æ³¢
+void median_flitering(Mat src, Mat dst){
 	int temparray[25]; //5x5
 	int m = 2;
 	int rows = src.rows;
 	int cols = src.cols;
 
-	for (int i = 0; i < rows; i++)
+	for(int i = 0;i< rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for(int j = 0;j< cols; j++)
 		{
 			int index = 0;
-			for (int y = i - m; y <= i + m; y++)
+			for ( int y= i-m; y<= i+m; y++)
 			{
-				for (int x = j - m; x <= j + m; x++)
+				for (int x= j-m; x<= j+m; x++)
 				{
 					if (y < 0 || x < 0 || y >= rows || x >= cols)
 					{
@@ -185,73 +208,73 @@ void median_flitering(Mat src, Mat dst) {
 					temparray[index++] = src.at<uchar>(y, x);
 				}
 			}
-			quickSort(temparray, 0, sizeof(temparray) / 4 - 1);
-			dst.at<uchar>(i, j) = temparray[sizeof(temparray) / 8 - 1];
+			quickSort(temparray,0,sizeof(temparray)/4-1);
+			dst.at<uchar>(i, j) = temparray[sizeof(temparray)/8-1];
 		}
 	}
 }
 
-void quickSort(int *a, int left, int right) {
-	int pivot, i, j, temp; //pivot=°ò·ÇÂI¡Ftemp=¨â¼Æ¤¬´«¥Îªº¼È¦s­È
-	pivot = a[left]; //°ò·Ç­È¥ıµ¥©ó²Ä¤@­Ó¼Æ¦r
-	i = left; //¤ñ¸û¤ñpivot¤pªº¼Æ­È¥Îindex
-	j = right; //¤ñ¸û¤ñpivot¤jªº¼Æ­È¥Îindex
-	temp = 0;
+void quickSort(int *a,int left,int right){
+	int pivot,i,j,temp; //pivot=åŸºæº–é»ï¼›temp=å…©æ•¸äº’æ›ç”¨çš„æš«å­˜å€¼
+	pivot=a[left]; //åŸºæº–å€¼å…ˆç­‰æ–¼ç¬¬ä¸€å€‹æ•¸å­—
+	i=left; //æ¯”è¼ƒæ¯”pivotå°çš„æ•¸å€¼ç”¨index
+	j=right; //æ¯”è¼ƒæ¯”pivotå¤§çš„æ•¸å€¼ç”¨index
+	temp=0;
 
-	if (left < right) {
-		while (i < j) {
+	if(left<right){
+		while(i<j){
 			i++;
-			while (a[i] < pivot) {
+			while(a[i]<pivot){
 				i++;
 			}
-			while (a[j] > pivot) {
+			while(a[j]>pivot){
 				j--;
 			}
-			//§ä¨ì¤£²Å¦Xªº­È®É¡A¥æ´«¨âªÌ¦ì¸m -> ¥ª¬q¤p©ó°ò·Ç­È¡A¥k¬q¤j©ó°ò·Ç­È
-			if (i < j) {
-				temp = a[j];
-				a[j] = a[i];
-				a[i] = temp;
+			//æ‰¾åˆ°ä¸ç¬¦åˆçš„å€¼æ™‚ï¼Œäº¤æ›å…©è€…ä½ç½® -> å·¦æ®µå°æ–¼åŸºæº–å€¼ï¼Œå³æ®µå¤§æ–¼åŸºæº–å€¼
+			if(i<j){
+				temp=a[j];
+				a[j]=a[i];
+				a[i]=temp;
 			}
 		}
-		//±N°ò·Ç­È´«¨ì¤w¸g¤À¦n¤j¤p¨âÃä®Éªº¤¤¶¡¥h
-		temp = a[j];
-		a[j] = a[left];
-		a[left] = temp;
+		//å°‡åŸºæº–å€¼æ›åˆ°å·²ç¶“åˆ†å¥½å¤§å°å…©é‚Šæ™‚çš„ä¸­é–“å»
+		temp=a[j];
+		a[j]=a[left];
+		a[left]=temp;
 
-		//§Q¥Î»¼°jÄ~Äò±Æ§Ç¤j¤p¨âÃä
-		quickSort(a, left, j - 1); //±Æ§Ç¥ª¬q
-		quickSort(a, j + 1, right);//±Æ§Ç¥k¬q
+		//åˆ©ç”¨éè¿´ç¹¼çºŒæ’åºå¤§å°å…©é‚Š
+		quickSort(a,left,j-1); //æ’åºå·¦æ®µ
+		quickSort(a,j+1,right);//æ’åºå³æ®µ
 	}
 }
 
-//ªi®pªi¨¦Âoªi
-void peak_and_valley_flitering(Mat src, Mat dst) {
+//æ³¢å³°æ³¢è°·æ¿¾æ³¢
+void peak_and_valley_flitering(Mat src, Mat dst){
 	int m = 2; //5x5
 	int rows = src.rows;
 	int cols = src.cols;
 
-	for (int i = 0; i < rows; i++)
+	for(int i = 0;i< rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for(int j = 0;j< cols; j++)
 		{
 			int min = 256;
 			int max = 0;
-			for (int y = i - m; y <= i + m; y++)
+			for ( int y= i-m; y<= i+m; y++)
 			{
-				for (int x = j - m; x <= j + m; x++)
+				for (int x= j-m; x<= j+m; x++)
 				{
 					if (y < 0 || x < 0 || y >= rows || x >= cols)
 					{
 						continue;
 					}
-					if (x != j && y != i)
+					if(x!=j && y!=i)
 					{
-						if (src.at<uchar>(y, x) > max)
+						if(src.at<uchar>(y, x)>max)
 						{
 							max = src.at<uchar>(y, x);
 						}
-						if (src.at<uchar>(y, x) < min)
+						if(src.at<uchar>(y, x)<min)
 						{
 							min = src.at<uchar>(y, x);
 						}
@@ -260,83 +283,82 @@ void peak_and_valley_flitering(Mat src, Mat dst) {
 
 				}
 			}
-			if (src.at<uchar>(i, j) <= min)
+			if(src.at<uchar>(i, j)<=min)
 			{
 				dst.at<uchar>(i, j) = min;
 			}
-			else if (src.at<uchar>(i, j) >= max)
+			else if(src.at<uchar>(i, j)>=max)
 			{
 				dst.at<uchar>(i, j) = max;
 			}
-			else {
+			else{
 				dst.at<uchar>(i, j) = src.at<uchar>(i, j);
 			}
 		}
 	}
 }
 
-//³Ì¤jÂoªi
-void max_flitering(Mat src, Mat dst) {
+//æœ€å¤§æ¿¾æ³¢
+void max_flitering(Mat src, Mat dst){
 	int m = 1; //3x3
 	int rows = src.rows;
 	int cols = src.cols;
 
-	for (int i = 0; i < rows; i++)
+	for(int i = 0;i< rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for(int j = 0;j< cols; j++)
 		{
 			int max = 0;
-			for (int y = i - m; y <= i + m; y++)
+			for ( int y= i-m; y<= i+m; y++)
 			{
-				for (int x = j - m; x <= j + m; x++)
+				for (int x= j-m; x<= j+m; x++)
 				{
 					if (y < 0 || x < 0 || y >= rows || x >= cols)
 					{
 						continue;
 					}
-					if (src.at<uchar>(y, x) > max)
+					if(src.at<uchar>(y, x)> max)
 					{
-						max = src.at<uchar>(y, x);
+						max =src.at<uchar>(y, x);
 					}
 				}
 			}
-			dst.at<uchar>(i, j) = max;
+			dst.at<uchar>(i,j) = max ;
 		}
 	}
 }
 
-//³Ì¤pÂoªi
-void min_flitering(Mat src, Mat dst) {
+//æœ€å°æ¿¾æ³¢
+void min_flitering(Mat src, Mat dst){
 	int m = 1; //3x3
 	int rows = src.rows;
 	int cols = src.cols * src.channels();
 
-	for (int i = 0; i < rows; i++)
+	for(int i = 0;i< rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for(int j = 0;j< cols; j++)
 		{
 			int min = 256;
-			for (int y = i - m; y <= i + m; y++)
+			for ( int y= i-m; y<= i+m; y++)
 			{
-				for (int x = j - m; x <= j + m; x++)
+				for (int x= j-m; x<= j+m; x++)
 				{
 					if (y < 0 || x < 0 || y >= rows || x >= cols)
 					{
 						continue;
 					}
-					if (src.at<uchar>(y, x) < min)
+					if(src.at<uchar>(y, x) < min)
 					{
-						min = src.at<uchar>(y, x);
+						min =src.at<uchar>(y, x);
 					}
 				}
 			}
-			dst.at<uchar>(i, j) = min;
+			dst.at<uchar>(i,j) = min ;
 		}
 	}
 }
 
-//ªÅ¶¡¶ZÂ÷®t²§
-//¨â­Ó¹³¯À¶¡ªº¶ZÂ÷
+//ç©ºé–“è·é›¢å·®ç•°
 double spacedistance(int x1, int y1, int x2, int y2, double sigmaS) {
 	double X = pow(abs(x1 - x2), 2);
 	double Y = pow(abs(y1 - y2), 2);
@@ -344,26 +366,22 @@ double spacedistance(int x1, int y1, int x2, int y2, double sigmaS) {
 	return exp(-(X + Y) / (2 * pow(sigmaS, 2)));
 }
 
-//¦Ç¶¥¶ZÂ÷®t²§
-//®Ú¾Ú¨ä¬Û¦üµ{«× ¨â­Ó¹³¯Àªº­È¤§¶¡ªº¶ZÂ÷
+//ç°éšè·é›¢å·®ç•°
 double GSdistance(int g1, int g2, double sigmaG) {
 	double X = pow(abs(g1 - g2), 2);
 	return exp(-X / (2 * pow(sigmaG, 2)));
 }
 
-//Âù°¼Âoªi¾¹
-// sigmaS = sigmaG = 13
-void bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG) { //Âù°¼Âoªi¾¹
+//é›™å´æ¿¾æ³¢å™¨
+void bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG) { //é›™å´æ¿¾æ³¢å™¨
 	int m = 7; //15*15
 	int rows = src.rows;
 	int cols = src.cols;
 
-	for (int i = 0; i < rows; i++)
+	for (int i = 0;i < rows;i++)
 	{
-		for (int j = 0; j < cols; j++)
+		for (int j = 0;j < cols; j++)
 		{
-			//int i = blockIdx.x * blockDim.x + threadIdx.x;
-			//int j = blockIdx.y * blockDim.y + threadIdx.y;
 			double k = 0;
 			double f = 0;
 			for (int y = i - m; y <= i + m; y++)
@@ -374,10 +392,8 @@ void bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG) { //Âù°¼Âoª
 					{
 						continue;
 					}
-					// src.at<uchar>(column, row) ¦]¬° MAT ¬O column-major
-					// CV_8U ¥Î©ó8¦ì1³q¹D¦Ç«×¹Ï¹³
-					f = f + src.at<uchar>(y, x) * spacedistance(i, j, y, x, sigmaS) * GSdistance(src.at<uchar>(i, j), src.at<uchar>(y, x), sigmaG);
-					k = k + spacedistance(i, j, y, x, sigmaS) * GSdistance(src.at<uchar>(i, j), src.at<uchar>(y, x), sigmaG);
+					f = f + src.at<uchar>(y, x)*spacedistance(i, j, y, x, sigmaS)*GSdistance(src.at<uchar>(i, j), src.at<uchar>(y, x), sigmaG);
+					k = k + spacedistance(i, j, y, x, sigmaS)*GSdistance(src.at<uchar>(i, j), src.at<uchar>(y, x), sigmaG);
 
 				}
 			}
@@ -387,4 +403,56 @@ void bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG) { //Âù°¼Âoª
 			dst.at<uchar>(i, j) = (uchar)g;
 		}
 	}
+}
+
+//ç©ºé–“è·é›¢å·®ç•°
+double __device__ CUDA_spacedistance(int x1, int y1, int x2, int y2, double sigmaS) {
+	int xx = abs(x1 - x2);
+	int yy = abs(y1 - y2);
+	double X = xx*xx;
+	double Y = yy*yy;
+	return exp(-(X + Y) / (2 * pow(sigmaS, 2)));
+}
+
+//ç°éšè·é›¢å·®ç•°
+double __device__ CUDA_GSdistance(int g1, int g2, double sigmaG) {
+	int xx = abs(g1 - g2);
+	double X = xx*xx;
+	return exp(-X / (2 * pow(sigmaG, 2)));
+}
+
+
+void __global__ CUDA_bilateralfilter(uchar *d_src, uchar *d_dst, int rows, int cols, double sigmaS, double sigmaG) {
+	int m = 7; //15*15
+	int i = threadIdx.x + blockDim.x * blockIdx.x;
+	int j = threadIdx.y + blockDim.y * blockIdx.y;
+	if (i < rows && j < cols)
+	{
+		//int idx = i * cols + j;
+		//int A = d_src[idx];
+		//d_dst[idx] = (uchar)exp((double)A);
+		
+		double k = 0;
+		double f = 0;
+		for (int y = i - m; y <= i + m; y++)  //row
+		{
+			for (int x = j - m; x <= j + m; x++)  //column
+			{
+				if (y < 0 || x < 0 || y >= rows || x >= cols)
+				{
+					continue;
+				}
+				int YX = (int)d_src[y*cols + x];
+				int IJ = (int)d_src[i*cols + j];
+				f = f + YX * CUDA_spacedistance(i, j, y, x, sigmaS) * CUDA_GSdistance(IJ, YX, sigmaG);
+				k = k + CUDA_spacedistance(i, j, y, x, sigmaS) * CUDA_GSdistance(IJ, YX, sigmaG);
+			}
+		}
+		int g = f / k;
+		if (g < 0) g = 0;
+		else if (g > 255) g = 255;
+		d_dst[i*cols + j] = (uchar)g;
+		
+	}
+
 }
