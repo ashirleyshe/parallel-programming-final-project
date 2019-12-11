@@ -1,1 +1,8 @@
-﻿  ImageProcessing.vcxproj -> J:\final\x64\Debug\ImageProcessing.exe
+﻿  smoothing.cpp
+j:\opencv\build\include\opencv2\core\mat.hpp(1964): warning C4819: 檔案含有無法在目前字碼頁 (950) 中表示的字元。請以 Unicode 格式儲存檔案以防止資料遺失
+j:\opencv\build\include\opencv2\core\persistence.hpp : warning C4819: 檔案含有無法在目前字碼頁 (950) 中表示的字元。請以 Unicode 格式儲存檔案以防止資料遺失
+j:\opencv\build\include\opencv2\core\utility.hpp : warning C4819: 檔案含有無法在目前字碼頁 (950) 中表示的字元。請以 Unicode 格式儲存檔案以防止資料遺失
+j:\opencv\build\include\opencv2\core\utility.hpp : warning C4819: 檔案含有無法在目前字碼頁 (950) 中表示的字元。請以 Unicode 格式儲存檔案以防止資料遺失
+j:\final\imageprocessing\smoothing.cpp(384): warning C4244: '正在初始化': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
+j:\final\imageprocessing\smoothing.cpp(420): warning C4244: '正在初始化': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
+  ImageProcessing.vcxproj -> J:\final\x64\Debug\ImageProcessing.exe

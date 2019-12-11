@@ -20,6 +20,7 @@ void colorchange(Mat src, Mat dst);
 double spacedistance(int x1,int y1,int x2,int y2,double sigmaS);
 double GSdistance(int g1,int g2,double sigmaG);
 void bilateralfilter(Mat src,Mat dst,double sigmaS,double sigmaG);
+void openMP_bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG);
 
 int main(){
 	Mat src = imread("freckle.jpg", CV_LOAD_IMAGE_GRAYSCALE);
@@ -28,6 +29,7 @@ int main(){
 	Mat dst3(src.rows, src.cols, CV_8U);
 	Mat dst4(src.rows, src.cols, CV_8U);
 	Mat dst5(src.rows, src.cols, CV_8U);
+	Mat dst6(src.rows, src.cols, CV_8U);
 	
 	unsigned long start = clock();
 	neighborhood_averaging(src,dst);
@@ -51,13 +53,14 @@ int main(){
 	
 
 	start = clock();
-	//dim3 blocksPerGrid(512, 1, 1)
-	//dim3 threadsPerBlock(512, 1, 1)
-	//bilateralfilter << <blocksPerGrid, threadsPerBlock >> > ()
-	printf("%d %d\n", src.rows, src.cols); // 810*540
 	bilateralfilter(src,dst5,13,13);
 	end = clock();
 	cout<<"bilateralfilter total time="<<(end-start)/1000.0<<"seconds"<<endl;
+
+	start = clock();
+	openMP_bilateralfilter(src, dst6, 13, 13);
+	end = clock();
+	cout << "openMP_bilateralfilter total time=" << (end - start) / 1000.0 << "seconds" << endl;
 
 	//最大最小濾波在最小最大濾波
 	/*max_flitering(src,dst);
@@ -72,13 +75,15 @@ int main(){
 	imshow("median",dst3);
 	imshow("peak_and_valley",dst4);
 	imshow("bilateralfilter",dst5);
+	imshow("openMP_bilateralfilter", dst6);
 
 	imwrite("neigbor.jpg", dst);
 	imwrite("guassian.jpg", dst2);
 	imwrite("median.jpg", dst3);
 	imwrite("peak_and_valley.jpg", dst4);
 	imwrite("bilateralfilter.jpg", dst5);
-	
+	imwrite("openMP_bilateralfilter.jpg", dst6);
+
 	
 	waitKey(0);
 	return(0);
@@ -360,10 +365,9 @@ void bilateralfilter(Mat src,Mat dst,double sigmaS,double sigmaG){ //雙側濾�
 	{
 		for(int j = 0;j < cols; j++)
 		{
-	//int i = blockIdx.x * blockDim.x + threadIdx.x;
-	//int j = blockIdx.y * blockDim.y + threadIdx.y;
 			double k = 0;
 			double f = 0;
+			
 			for ( int y = i-m; y <= i+m; y++)
 			{
 				for (int x = j-m; x <= j+m; x++)
@@ -372,16 +376,48 @@ void bilateralfilter(Mat src,Mat dst,double sigmaS,double sigmaG){ //雙側濾�
 					{
 						continue;
 					}
-					// src.at<uchar>(column, row) 因為 MAT 是 column-major
-					// CV_8U 用於8位1通道灰度圖像
 					f = f + src.at<uchar>(y, x) * spacedistance(i,j,y,x,sigmaS) * GSdistance(src.at<uchar>(i, j),src.at<uchar>(y, x),sigmaG);
-					k = k + spacedistance(i,j,y,x,sigmaS) * GSdistance(src.at<uchar>(i, j),src.at<uchar>(y, x),sigmaG);
-					
+					k = k + spacedistance(i,j,y,x,sigmaS) * GSdistance(src.at<uchar>(i, j),src.at<uchar>(y, x),sigmaG);					
 				}
 			}
 			int g = f / k ;
 			if (g<0) g = 0;
 			else if(g>255) g = 255;
+			dst.at<uchar>(i, j) = (uchar)g;
+		}
+	}
+}
+
+
+//雙側濾波器
+// sigmaS = sigmaG = 13
+void openMP_bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG) { //雙側濾波器
+	int m = 7; //15*15
+	int rows = src.rows;
+	int cols = src.cols;
+
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
+			double k = 0;
+			double f = 0;
+			#pragma omp parallel for reduction(+:f, k)
+			for (int y = i - m; y <= i + m; y++)
+			{
+				for (int x = j - m; x <= j + m; x++)
+				{
+					if (y < 0 || x < 0 || y >= rows || x >= cols)
+					{
+						continue;
+					}
+					f = f + src.at<uchar>(y, x) * spacedistance(i, j, y, x, sigmaS) * GSdistance(src.at<uchar>(i, j), src.at<uchar>(y, x), sigmaG);
+					k = k + spacedistance(i, j, y, x, sigmaS) * GSdistance(src.at<uchar>(i, j), src.at<uchar>(y, x), sigmaG);
+				}
+			}
+			int g = f / k;
+			if (g < 0) g = 0;
+			else if (g > 255) g = 255;
 			dst.at<uchar>(i, j) = (uchar)g;
 		}
 	}
