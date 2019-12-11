@@ -23,3 +23,6 @@
   `opencv_world310d.lib`
   
   `opencv_world310.lib`
+
+### Visual Studio 使用 openMP
+* `C/C++` -> `語言` -> `開啟MP支援`
