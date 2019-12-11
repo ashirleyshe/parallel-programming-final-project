@@ -70,10 +70,10 @@ int main() {
 	end = clock();
 	cout<<"bilateralfilter total time="<<(end-start)/1000.0<<"seconds"<<endl;
 
-	start = clock();
-	openMP_bilateralfilter(src, dst7, 13, 13);
-	end = clock();
-	cout << "openMP_bilateralfilter total time=" << (end - start) / 1000.0 << "seconds" << endl;
+	//start = clock();
+	//openMP_bilateralfilter(src, dst7, 13, 13);
+	//end = clock();
+	//cout << "openMP_bilateralfilter total time=" << (end - start) / 1000.0 << "seconds" << endl;
 
 	start = clock();
 	uchar *d_src;
@@ -108,7 +108,7 @@ int main() {
 	imshow("peak_and_valley",dst4);
 	imshow("bilateralfilter", dst5);
 	imshow("CUDA_bilateralfilter", dst6);
-	imshow("openMP_bilateralfilter", dst7);
+	//imshow("openMP_bilateralfilter", dst7);
 
 
 	imwrite("neigbor.jpg", dst);
@@ -117,7 +117,7 @@ int main() {
 	imwrite("peak_and_valley.jpg", dst4);
 	imwrite("bilateralfilter.jpg", dst5);
 	imwrite("CUDA_bilateralfilter.jpg", dst6);
-	imwrite("openMP_bilateralfilter.jpg", dst7);
+	//imwrite("openMP_bilateralfilter.jpg", dst7);
 
 
 	waitKey(0);

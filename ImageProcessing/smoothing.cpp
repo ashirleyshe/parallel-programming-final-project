@@ -396,6 +396,7 @@ void openMP_bilateralfilter(Mat src, Mat dst, double sigmaS, double sigmaG) { //
 	int rows = src.rows;
 	int cols = src.cols;
 
+	#pragma omp parallel for
 	for (int i = 0; i < rows; i++)
 	{
 		for (int j = 0; j < cols; j++)
