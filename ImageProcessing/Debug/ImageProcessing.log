@@ -1,2 +1,0 @@
-﻿  smoothing.cpp
-j:\final\imageprocessing\smoothing.cpp(2): fatal error C1083: 無法開啟包含檔案: 'opencv2/opencv.hpp': No such file or directory

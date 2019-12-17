@@ -1,0 +1,3 @@
+﻿  fast_bf.cpp
+c:\users\user\source\repos\fast_bf\fast_bf\fast_bf.cpp(23): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+  fast_bf.vcxproj -> C:\Users\User\source\repos\fast_bf\x64\Debug\fast_bf.exe
